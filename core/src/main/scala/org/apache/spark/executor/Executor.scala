@@ -285,6 +285,12 @@ private[spark] class Executor(
     PluginContainer(env, resources.asJava)
   }
 
+  // ShardManager must be initialized after PluginContainer so that the Gluten
+  // plugin has already set up the Velox runtime (MemoryManager, native libs).
+  if (!isLocal) {
+    env.shardManager.initialize(conf.getAppId)
+  }
+
   metricsPoller.start()
 
   private[executor] def numRunningTasks: Int = runningTasks.size()

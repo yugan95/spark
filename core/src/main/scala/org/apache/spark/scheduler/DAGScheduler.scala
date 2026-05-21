@@ -2563,6 +2563,7 @@ private[spark] class DAGScheduler(
           host => blockManagerMaster.removeShufflePushMergerLocation(host))
       }
       blockManagerMaster.removeExecutor(execId)
+      env.shardManager.master.removeExecutor(execId)
       clearCacheLocs()
     }
     if (fileLost) {

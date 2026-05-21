@@ -28,6 +28,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
 import org.apache.spark.rdd.{RDD, ReliableRDDCheckpointData}
 import org.apache.spark.scheduler.SparkListener
+import org.apache.spark.shard.ShardSetRef
 import org.apache.spark.shuffle.api.ShuffleDriverComponents
 import org.apache.spark.util.{AccumulatorContext, AccumulatorV2, ThreadUtils, Utils}
 
@@ -38,6 +39,7 @@ private sealed trait CleanupTask
 private case class CleanRDD(rddId: Int) extends CleanupTask
 private case class CleanShuffle(shuffleId: Int) extends CleanupTask
 private case class CleanBroadcast(broadcastId: Long) extends CleanupTask
+private case class CleanShardSet(setId: Long) extends CleanupTask
 private case class CleanAccum(accId: Long) extends CleanupTask
 private case class CleanCheckpoint(rddId: Int) extends CleanupTask
 private case class CleanSparkListener(listener: SparkListener) extends CleanupTask
@@ -167,6 +169,10 @@ private[spark] class ContextCleaner(
     registerForCleanup(broadcast, CleanBroadcast(broadcast.id))
   }
 
+  def registerShardSetForCleanup(setRef: ShardSetRef): Unit = {
+    registerForCleanup(setRef, CleanShardSet(setRef.setId))
+  }
+
   /** Register a RDDCheckpointData for cleanup when it is garbage collected. */
   def registerRDDCheckpointDataForCleanup[T](rdd: RDD[_], parentId: Int): Unit = {
     registerForCleanup(rdd, CleanCheckpoint(parentId))
@@ -202,6 +208,8 @@ private[spark] class ContextCleaner(
                 doCleanupShuffle(shuffleId, blocking = blockOnShuffleCleanupTasks)
               case CleanBroadcast(broadcastId) =>
                 doCleanupBroadcast(broadcastId, blocking = blockOnCleanupTasks)
+              case CleanShardSet(setId) =>
+                doCleanupShardSet(setId, blocking = blockOnCleanupTasks)
               case CleanAccum(accId) =>
                 doCleanupAccum(accId, blocking = blockOnCleanupTasks)
               case CleanCheckpoint(rddId) =>
@@ -261,6 +269,17 @@ private[spark] class ContextCleaner(
     }
   }
 
+  def doCleanupShardSet(setId: Long, blocking: Boolean): Unit = {
+    try {
+      logInfo(s"Cleaning shard-set $setId")
+      shardManager.unpersist(setId, blocking)
+      listeners.asScala.foreach(_.shardSetCleaned(setId))
+      logInfo(s"Cleaned shard-set $setId")
+    } catch {
+      case e: Exception => logError("Error cleaning shard-set " + setId, e)
+    }
+  }
+
   /** Perform accumulator cleanup. */
   def doCleanupAccum(accId: Long, blocking: Boolean): Unit = {
     try {
@@ -300,6 +319,7 @@ private[spark] class ContextCleaner(
   }
 
   private def broadcastManager = sc.env.broadcastManager
+  private def shardManager = sc.env.shardManager
   private def mapOutputTrackerMaster = sc.env.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster]
 }
 
@@ -314,6 +334,7 @@ private[spark] trait CleanerListener {
   def rddCleaned(rddId: Int): Unit
   def shuffleCleaned(shuffleId: Int): Unit
   def broadcastCleaned(broadcastId: Long): Unit
+  def shardSetCleaned(setId: Long): Unit
   def accumCleaned(accId: Long): Unit
   def checkpointCleaned(rddId: Long): Unit
 }
