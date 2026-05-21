@@ -565,12 +565,10 @@ case class AdaptiveSparkPlanExec(
         }
         BroadcastQueryStageExec(currentStageId, newBroadcast, b.canonicalized)
       case sh: ShardExchangeLike =>
-        // Materialize shard exchange as its own query stage. Do not "drill down" into child,
-        // so AQE won't coalesce internal shuffle partitions.
+        // Materialize shard exchange as its own query stage.
         val newShard = applyPhysicalRules(
-          sh,
-          // Shard exchange is row-based; pass false to avoid accidental columnar transform.
-          postStageCreationRules(outputsColumnar = false),
+          sh.withNewChildren(Seq(optimizedPlan)),
+          postStageCreationRules(outputsColumnar = sh.supportsColumnar),
           Some((planChangeLogger, "AQE Post Stage Creation")))
         if (!newShard.isInstanceOf[ShardExchangeLike]) {
           throw new IllegalStateException(

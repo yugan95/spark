@@ -141,7 +141,6 @@ private[spark] class Executor(
 
   if (!isLocal) {
     env.blockManager.initialize(conf.getAppId)
-    env.shardManager.initialize(conf.getAppId)
     env.metricsSystem.registerSource(executorSource)
     env.metricsSystem.registerSource(new JVMCPUSource())
     executorMetricsSource.foreach(_.register(env.metricsSystem))
@@ -284,6 +283,12 @@ private[spark] class Executor(
   // to avoid blocking to send heartbeat (see SPARK-32175).
   private val plugins: Option[PluginContainer] = Utils.withContextClassLoader(replClassLoader) {
     PluginContainer(env, resources.asJava)
+  }
+
+  // ShardManager must be initialized after PluginContainer so that the Gluten
+  // plugin has already set up the Velox runtime (MemoryManager, native libs).
+  if (!isLocal) {
+    env.shardManager.initialize(conf.getAppId)
   }
 
   metricsPoller.start()

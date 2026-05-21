@@ -31,6 +31,20 @@ private[spark] abstract class ShardLookupService extends ShardStoreClient {
 
   def hostName: String
 
+  /** Whether this service supports native lookup (Gluten/Velox gRPC path). */
+  def supportsNativeLookup: Boolean = false
+
+  /**
+   * Called during replica installation when supportsNativeLookup is true.
+   * Native implementations (e.g. Gluten/Velox) should construct the shard
+   * HashTable from raw BlockManager data instead of Java deserialization.
+   * Default implementation throws; only invoked when supportsNativeLookup is true.
+   */
+  def installNativeReplica(setId: Long, shardId: Int): Unit = {
+    throw new UnsupportedOperationException(
+      "installNativeReplica not implemented")
+  }
+
   def fetchBatch(host: String, port: Int, reqMsg: ManagedBuffer): Future[ManagedBuffer] = {
     val result = Promise[ManagedBuffer]()
     fetchBatch(

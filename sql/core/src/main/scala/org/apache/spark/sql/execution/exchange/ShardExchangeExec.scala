@@ -109,7 +109,8 @@ case class ShardExchangeExec(
           val shardIds =
             sharded
               .mapPartitionsWithIndexInternal { case (shardId, rowIter) =>
-                val bf = BloomFilter.create(5 << 20L, 0.03d)
+                val bloomCapacity = (5L << 20) * numShards
+                val bf = BloomFilter.create(bloomCapacity, 0.03d)
                 val keyGenerator = UnsafeProjection.create(buildBoundKeys)
                 val iter = rowIter.map { row =>
                   bf.put(keyGenerator(row).getBytes)

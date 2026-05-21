@@ -70,6 +70,19 @@ class BlockManagerStorageEndpoint(
       }
     case RemoveShardSet(setId: Long) =>
       doAsync[Int]("removing shard-set " + setId, context) {
+        // Invoke Gluten native cleanup if native lookup is enabled
+        val shardLookupService = SparkEnv.get.shardManager.shardLookupService
+        if (shardLookupService.supportsNativeLookup) {
+          try {
+            val callbackClass = Utils.classForName(
+              "org.apache.spark.shard.GlutenShardCleanupCallback")
+            val method = callbackClass.getMethod("onShardSetRemoved", classOf[Long])
+            method.invoke(null, java.lang.Long.valueOf(setId))
+          } catch {
+            case e: Exception =>
+              logWarning(s"Failed to invoke Gluten shard cleanup for setId=$setId", e)
+          }
+        }
         blockManager.removeShardSet(setId, tellMaster = true)
       }
 

@@ -113,9 +113,17 @@ private[spark] class ShardManager(
   }
 
   def installReplica(setId: Long, id: Int): Unit = {
-    readShardBlock[AnyRef](setId, id)
+    logInfo(s"installReplica: setId=$setId, shardId=$id, " +
+      s"supportsNativeLookup=${shardLookupService.supportsNativeLookup}")
+    if (shardLookupService.supportsNativeLookup) {
+      // Native path: construct shard HashTable directly from raw BlockManager
+      // bytes via JNI, bypassing Java deserialization of ShardBlock.
+      shardLookupService.installNativeReplica(setId, id)
+    } else {
+      readShardBlock[AnyRef](setId, id)
+    }
     master.reportShard(shardManagerId, setId, id)
-    logInfo(s"Install replica done ($setId, $id)")
+    logInfo(s"Install replica done ($setId, $id), reported to master")
   }
 
   def mergeBloomFilter(setId: Long, shardIds: Array[Int], acc: BloomAccumulator): Unit =
@@ -215,6 +223,9 @@ private[spark] class ShardManager(
       setId: Long,
       shardId: Int,
       toReqMsg: () => ManagedBuffer): Future[ManagedBuffer] = {
+    require(!shardLookupService.supportsNativeLookup,
+      "fetchRemoteBatch should not be called when native lookup is enabled; " +
+      "probe-side lookup is handled by Velox gRPC ShardSource directly")
     implicit val ec: ExecutionContextExecutorService = lookupEc
     val message: Future[ManagedBuffer] = Future {
       toReqMsg()

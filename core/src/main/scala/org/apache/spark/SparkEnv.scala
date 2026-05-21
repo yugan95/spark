@@ -37,7 +37,8 @@ import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.internal.config._
 import org.apache.spark.memory.{MemoryManager, UnifiedMemoryManager}
 import org.apache.spark.metrics.{MetricsSystem, MetricsSystemInstances}
-import org.apache.spark.network.netty.{NettyBlockTransferService, NettyShardLookupService, SparkTransportConf}
+import org.apache.spark.network.{ShardLookupServiceFactory}
+import org.apache.spark.network.netty.{NettyBlockTransferService, SparkTransportConf}
 import org.apache.spark.network.shuffle.ExternalBlockStoreClient
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
@@ -323,7 +324,8 @@ object SparkEnv extends Logging {
       conf,
       isDriver)
     val shardLookupService =
-      new NettyShardLookupService(conf,
+      ShardLookupServiceFactory.create(
+        conf,
         bindAddress,
         advertiseAddress,
         0,
