@@ -37,13 +37,14 @@ import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.internal.config._
 import org.apache.spark.memory.{MemoryManager, UnifiedMemoryManager}
 import org.apache.spark.metrics.{MetricsSystem, MetricsSystemInstances}
-import org.apache.spark.network.netty.{NettyBlockTransferService, SparkTransportConf}
+import org.apache.spark.network.netty.{NettyBlockTransferService, NettyShardLookupService, SparkTransportConf}
 import org.apache.spark.network.shuffle.ExternalBlockStoreClient
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.{LiveListenerBus, OutputCommitCoordinator}
 import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinatorEndpoint
 import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
+import org.apache.spark.shard.{ShardManager, ShardManagerId, ShardManagerInfo, ShardManagerMaster, ShardManagerMasterEndpoint}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.storage._
 import org.apache.spark.util.{RpcUtils, Utils}
@@ -65,6 +66,7 @@ class SparkEnv (
     val mapOutputTracker: MapOutputTracker,
     val shuffleManager: ShuffleManager,
     val broadcastManager: BroadcastManager,
+    val shardManager: ShardManager,
     val blockManager: BlockManager,
     val securityManager: SecurityManager,
     val metricsSystem: MetricsSystem,
@@ -92,6 +94,8 @@ class SparkEnv (
       mapOutputTracker.stop()
       shuffleManager.stop()
       broadcastManager.stop()
+      shardManager.stop()
+      shardManager.master.stop()
       blockManager.stop()
       blockManager.master.stop()
       metricsSystem.stop()
@@ -306,6 +310,33 @@ object SparkEnv extends Logging {
       new MapOutputTrackerWorker(conf)
     }
 
+    val shardManagerInfo = new concurrent.TrieMap[ShardManagerId, ShardManagerInfo]
+    val shardManagerMaster = new ShardManagerMaster(
+      registerOrLookupEndpoint(
+        ShardManagerMaster.DRIVER_ENDPOINT_NAME,
+        new ShardManagerMasterEndpoint(
+          rpcEnv,
+          isLocal,
+          conf,
+          shardManagerInfo,
+          isDriver)),
+      conf,
+      isDriver)
+    val shardLookupService =
+      new NettyShardLookupService(conf,
+        bindAddress,
+        advertiseAddress,
+        0,
+        numUsableCores,
+        shardManagerMaster.masterEndpoint)
+    val shardManager = new ShardManager(
+      executorId,
+      rpcEnv,
+      shardManagerMaster,
+      conf,
+      shardLookupService,
+      isDriver)
+
     // Have to assign trackerEndpoint after initialization as MapOutputTrackerEndpoint
     // requires the MapOutputTracker itself
     mapOutputTracker.trackerEndpoint = registerOrLookupEndpoint(MapOutputTracker.ENDPOINT_NAME,
@@ -416,6 +447,7 @@ object SparkEnv extends Logging {
       mapOutputTracker,
       shuffleManager,
       broadcastManager,
+      shardManager,
       blockManager,
       securityManager,
       metricsSystem,

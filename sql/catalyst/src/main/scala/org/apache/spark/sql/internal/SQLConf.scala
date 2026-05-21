@@ -4206,6 +4206,19 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+    val DISTRIBUTED_MAP_JOIN_MAX_IN_FLIGHT_NUM =
+    buildConf("spark.sql.execution.distributedMapJoin.maxInFlightNum")
+      .doc("Distributed map join stream side max in-flight num.")
+      .version("3.4.2")
+      .intConf
+      .createWithDefault(8)
+
+  val DISTRIBUTED_MAP_JOIN_MAX_BATCH_SIZE =
+    buildConf("spark.sql.execution.distributedMapJoin.maxBatchSize")
+      .doc("Distributed map join lookup max batch size.")
+      .version("3.4.2")
+      .intConf
+      .createWithDefault(256)
   /**
    * Holds information about keys that have been deprecated.
    *
@@ -4608,6 +4621,9 @@ class SQLConf extends Serializable with Logging {
   def broadcastHashJoinOutputPartitioningExpandLimit: Int =
     getConf(BROADCAST_HASH_JOIN_OUTPUT_PARTITIONING_EXPAND_LIMIT)
 
+    def distributedMapJoinMaxInFlightNum: Int = getConf(DISTRIBUTED_MAP_JOIN_MAX_IN_FLIGHT_NUM)
+
+  def distributedMapJoinMaxBatchSize: Int = getConf(DISTRIBUTED_MAP_JOIN_MAX_BATCH_SIZE)
   /**
    * Returns the [[Resolver]] for the current configuration, which can be used to determine if two
    * identifiers are equal.

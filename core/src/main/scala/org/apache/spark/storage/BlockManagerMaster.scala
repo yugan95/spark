@@ -210,6 +210,17 @@ class BlockManagerMaster(
     }
   }
 
+  def removeShardSet(setId: Long, blocking: Boolean): Unit = {
+    val future = driverEndpoint.askSync[Future[Seq[Int]]](RemoveShardSet(setId))
+    future.failed.foreach(e =>
+      logWarning(s"Failed to remove shard-set $setId - ${e.getMessage}", e)
+    )(ThreadUtils.sameThread)
+    if (blocking) {
+      // the underlying Futures will timeout anyway, so it's safe to use infinite timeout here
+      RpcUtils.INFINITE_TIMEOUT.awaitResult(future)
+    }
+  }
+
   /**
    * Return the memory status for each block manager, in the form of a map from
    * the block manager's id to two long values. The first value is the maximum

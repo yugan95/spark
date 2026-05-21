@@ -48,6 +48,8 @@ private[spark] object BlockManagerMessages {
   case class RemoveBroadcast(broadcastId: Long, removeFromDriver: Boolean = true)
     extends ToBlockManagerMasterStorageEndpoint
 
+  case class RemoveShardSet(setId: Long) extends ToBlockManagerMasterStorageEndpoint
+
   /**
    * Driver to Executor message to trigger a thread dump.
    */

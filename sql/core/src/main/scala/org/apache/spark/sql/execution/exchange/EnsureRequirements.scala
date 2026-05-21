@@ -65,6 +65,8 @@ case class EnsureRequirements(
         child
       case (child, BroadcastDistribution(mode)) =>
         BroadcastExchangeExec(mode, child)
+      case (child, ShardDistribution(keys, shards, replicas)) =>
+        ShardExchangeExec(keys, shards, replicas, child)
       case (child, distribution) =>
         val numPartitions = distribution.requiredNumPartitions
           .getOrElse(conf.numShufflePartitions)

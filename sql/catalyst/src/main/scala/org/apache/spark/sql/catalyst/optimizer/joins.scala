@@ -310,6 +310,32 @@ trait JoinSelectionHelper {
     )
   }
 
+  def getDistMapJoinBuildSide(left: LogicalPlan,
+                              right: LogicalPlan,
+                              joinType: JoinType,
+                              hint: JoinHint,
+                              hintOnly: Boolean,
+                              conf: SQLConf): Option[BuildSide] = {
+
+    if (!hintOnly) {
+      return None
+    }
+
+    val buildLeft = hintToDistMapJoinLeft(hint)
+    val buildRight = hintToDistMapJoinRight(hint)
+
+    if (!buildLeft && !buildRight) {
+      return None
+    }
+
+    getBuildSide(
+      canBuildDistMapJoinLeft(joinType) && buildLeft,
+      canBuildDistMapJoinRight(joinType) && buildRight,
+      left,
+      right
+    )
+  }
+
   def getShuffleHashJoinBuildSide(
       left: LogicalPlan,
       right: LogicalPlan,
@@ -372,6 +398,20 @@ trait JoinSelectionHelper {
     }
   }
 
+  def canBuildDistMapJoinLeft(joinType: JoinType): Boolean = {
+    joinType match {
+      case _: InnerLike | RightOuter => true
+      case _ => false
+    }
+  }
+
+  def canBuildDistMapJoinRight(joinType: JoinType): Boolean = {
+    joinType match {
+      case _: InnerLike | LeftOuter | LeftSemi | LeftAnti | _: ExistenceJoin => true
+      case _ => false
+    }
+  }
+
   def canBuildShuffledHashJoinLeft(joinType: JoinType): Boolean = {
     joinType match {
       case _: InnerLike | RightOuter | FullOuter => true
@@ -418,6 +458,14 @@ trait JoinSelectionHelper {
 
   def hintToNotBroadcastRight(hint: JoinHint): Boolean = {
     hint.rightHint.exists(_.strategy.contains(NO_BROADCAST_HASH))
+  }
+
+  def hintToDistMapJoinLeft(hint: JoinHint): Boolean = {
+    hint.leftHint.exists(_.strategy.exists(isDistMapJoin))
+  }
+
+  def hintToDistMapJoinRight(hint: JoinHint): Boolean = {
+    hint.rightHint.exists(_.strategy.exists(isDistMapJoin))
   }
 
   def hintToShuffleHashJoinLeft(hint: JoinHint): Boolean = {
@@ -501,6 +549,12 @@ trait JoinSelectionHelper {
   private def forceApplyShuffledHashJoin(conf: SQLConf): Boolean = {
     Utils.isTesting &&
       conf.getConfString("spark.sql.join.forceApplyShuffledHashJoin", "false") == "true"
+  }
+
+  private def isDistMapJoin(s: JoinStrategyHint): Boolean = s match {
+    case DISTMAPJOIN => true
+    case _: DistMapJoinStrategy => true
+    case _ => false
   }
 }
 

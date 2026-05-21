@@ -141,6 +141,7 @@ private[spark] class Executor(
 
   if (!isLocal) {
     env.blockManager.initialize(conf.getAppId)
+    env.shardManager.initialize(conf.getAppId)
     env.metricsSystem.registerSource(executorSource)
     env.metricsSystem.registerSource(new JVMCPUSource())
     executorMetricsSource.foreach(_.register(env.metricsSystem))

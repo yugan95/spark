@@ -68,6 +68,10 @@ class BlockManagerStorageEndpoint(
       doAsync[Int]("removing broadcast " + broadcastId, context) {
         blockManager.removeBroadcast(broadcastId, tellMaster = true)
       }
+    case RemoveShardSet(setId: Long) =>
+      doAsync[Int]("removing shard-set " + setId, context) {
+        blockManager.removeShardSet(setId, tellMaster = true)
+      }
 
     case GetBlockStatus(blockId, _) =>
       context.reply(blockManager.getStatus(blockId))

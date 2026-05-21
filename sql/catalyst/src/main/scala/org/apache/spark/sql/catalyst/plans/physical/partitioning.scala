@@ -190,6 +190,32 @@ case class BroadcastDistribution(mode: BroadcastMode) extends Distribution {
 }
 
 /**
+ * A distribution where data is distributed by hashing the given expressions into a fixed number
+ * of shards. Used by DistributedMapJoin to ensure build side data is properly sharded for remote
+ * lookup.
+ *
+ * @param buildKeys
+ *   The expressions to hash on
+ * @param numShards
+ *   Number of shards (partitions)
+ */
+case class ShardDistribution(
+    buildKeys: Seq[Expression],
+    numShards: Int,
+    replicaCount: Int)
+  extends Distribution {
+
+  override def requiredNumPartitions: Option[Int] = Some(numShards)
+
+  /**
+   * Creates a default partitioning for this distribution, which can satisfy this distribution
+   * while matching the given number of partitions.
+   */
+  override def createPartitioning(numPartitions: Int): Partitioning =
+    HashPartitioning(buildKeys, numShards)
+}
+
+/**
  * Describes how an operator's output is split across partitions. It has 2 major properties:
  *   1. number of partitions.
  *   2. if it can satisfy a given distribution.
@@ -541,6 +567,24 @@ case class BroadcastPartitioning(mode: BroadcastMode) extends Partitioning {
     case UnspecifiedDistribution => true
     case BroadcastDistribution(m) if m == mode => true
     case _ => false
+  }
+}
+
+case class ShardPartitioning(buildKeys: Seq[Expression],
+                             numShards: Int) extends Partitioning {
+
+  override val numPartitions: Int = numShards
+
+  override protected def satisfies0(required: Distribution): Boolean = required match {
+    case ShardDistribution(keys, shards, _) =>
+      shards == numShards && sameKeys(keys)
+    case _ => false
+  }
+
+  private def sameKeys(req: Seq[Expression]): Boolean = {
+    val a = buildKeys.map(_.canonicalized)
+    val b = req.map(_.canonicalized)
+    a.length == b.length && a.zip(b).forall { case (x, y) => x.semanticEquals(y) }
   }
 }
 
